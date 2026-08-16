@@ -1,0 +1,1 @@
+import{t as e}from"./jsx-runtime-B-hcVAMW.js";import{J as t,Y as n,Z as r}from"./index-BtyxpMFw.js";import{t as i}from"./AuthForm-CLk1NCm_.js";var a=e();function o(){let{role:e}=n();return e?(0,a.jsx)(r,{to:t[e]}):(0,a.jsx)(i,{mode:`signup`})}export{o as component};

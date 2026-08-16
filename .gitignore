@@ -1,0 +1,32 @@
+# macOS
+.DS_Store
+
+# IDEs
+.vscode/
+.idea/
+
+# Frontend (Node / React / Vite)
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.env
+frontend/.env.*
+frontend/.eslintcache
+
+# Backend (Python / FastAPI)
+backend/venv/
+backend/env/
+backend/__pycache__/
+backend/*.pyc
+backend/.pytest_cache/
+backend/.env
+backend/alembic.ini
+
+# Logs & Databases
+*.log
+*.sqlite
+*.sqlite3
+
+# Uploads / Local Data
+backend/uploads/
+backend/resumes/
