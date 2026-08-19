@@ -19,7 +19,7 @@ def get_me(current_hm: HiringManager = Depends(get_current_hiring_manager)):
         "firstName": current_hm.firstName,
         "lastName": current_hm.lastName,
         "email": current_hm.email,
-        "hiringDepartment": {"id": current_hm.department.id, "name": current_hm.department.name} if current_hm.department else None
+        "hiringDepartment": {"id": current_hm.hiringDepartment.id, "name": current_hm.hiringDepartment.name} if current_hm.hiringDepartment else None
     }
 
 @router.put("/me")
@@ -40,5 +40,5 @@ def update_me(
         "firstName": current_hm.firstName,
         "lastName": current_hm.lastName,
         "email": current_hm.email,
-        "hiringDepartment": {"id": current_hm.department.id, "name": current_hm.department.name} if current_hm.department else None
+        "hiringDepartment": {"id": current_hm.hiringDepartment.id, "name": current_hm.hiringDepartment.name} if current_hm.hiringDepartment else None
     }

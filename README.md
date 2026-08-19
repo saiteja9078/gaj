@@ -1,6 +1,6 @@
-# Hirely - Job Portal Platform
+# GAJ - Get a Job
 
-Hirely is a full-stack job application tracking platform that connects **Candidates**, **Hiring Managers**, and **Companies**. It allows candidates to build profiles, upload resumes, and apply for jobs, while offering companies and hiring managers a dashboard to post jobs, review applicants, and track application statuses.
+GAJ is a full-stack job application tracking platform that connects **Candidates**, **Hiring Managers**, and **Companies**. It allows candidates to build profiles, upload resumes, and apply for jobs, while offering companies and hiring managers a dashboard to post jobs, review applicants, and track application statuses.
 
 ## Architecture & Tech Stack
 
@@ -14,7 +14,7 @@ The frontend is a modern single-page application built for speed and excellent u
 - **API Communication**: Native `fetch` wrapper communicating with the FastAPI backend
 
 ### Backend (`/backend`)
-The backend is a high-performance RESTful API originally migrated from Spring Boot to FastAPI.
+The backend is a high-performance RESTful API built with Python and FastAPI.
 - **Framework**: FastAPI (Python)
 - **Database**: PostgreSQL
 - **ORM**: SQLAlchemy
@@ -89,5 +89,4 @@ The backend is a high-performance RESTful API originally migrated from Spring Bo
 * **Hiring Manager Dashboards**: Hiring managers can post job listings and track applicants through multiple application stages (Applied, Screening, Interview, Offer, Rejected).
 * **Job Board**: A unified job board where candidates can search and apply for jobs.
 
-## Note on Migration
-This application's backend was recently migrated from Java Spring Boot to Python FastAPI. All frontend API routes have been updated to communicate effectively with the new Python backend, ensuring a smooth transition of the existing UI components to the new database models.
+

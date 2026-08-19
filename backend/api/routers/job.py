@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List
 from core.database import get_db
-from api.deps import get_current_hiring_manager, get_current_candidate
+from api.deps import get_current_hiring_manager, get_current_candidate, get_current_company_or_hm, CompanyOrHMUser
 from schemas.job import JobPostingCreate, JobPostingResponse, JobApplicationCreate, JobApplicationResponse
-from models.company import HiringManager
+from models.company import HiringManager, Department
 from models.candidate import Candidate
 from models.job import JobPosting, JobApplication, JobSkillRequirement
 from services.email_service import send_job_application_email, send_welcome_email
@@ -14,9 +14,26 @@ router = APIRouter()
 @router.post("/postings")
 def create_job_posting(
     job_req: JobPostingCreate,
-    current_hm: HiringManager = Depends(get_current_hiring_manager),
+    current_user: CompanyOrHMUser = Depends(get_current_company_or_hm),
     db: Session = Depends(get_db)
 ):
+    """
+    Create a job posting. Accessible by both COMPANY and HIRING_MANAGER.
+    Mirrors Spring's JobApi.createJobPosting with hasAnyRole("COMPANY","HIRING_MANAGER").
+    - If COMPANY: company_id = their own ID, hiring_manager_id = None
+    - If HIRING_MANAGER: company_id resolved from their department→company chain
+    """
+    if current_user.is_company:
+        company_id = current_user.company.id
+        hiring_manager_id = None
+    else:
+        # Resolve company through the HM's department
+        hm = current_user.hm
+        if not hm.hiringDepartment or not hm.hiringDepartment.company:
+            raise HTTPException(status_code=400, detail="Hiring manager is not linked to a company")
+        company_id = hm.hiringDepartment.company.id
+        hiring_manager_id = hm.id
+
     job = JobPosting(
         title=job_req.title,
         description=job_req.description,
@@ -29,15 +46,16 @@ def create_job_posting(
         country=job_req.country,
         state=job_req.state,
         city=job_req.city,
-        company_id=job_req.company_id,
+        company_id=company_id,
         workMode=job_req.workMode,
         minimumExperienceInMonths=job_req.minimumExperienceInMonths,
         expiresAt=job_req.expiresAt,
-        hiring_manager_id=current_hm.id
+        hiring_manager_id=hiring_manager_id
     )
     db.add(job)
     db.commit()
     return {"message": "Job posted successfully"}
+
 
 @router.get("/postings", response_model=List[JobPostingResponse])
 def get_job_postings(db: Session = Depends(get_db)):
@@ -107,21 +125,37 @@ def get_my_applications(
 @router.get("/{job_id}/applicants")
 def get_job_applicants(
     job_id: int,
-    current_hm: HiringManager = Depends(get_current_hiring_manager),
+    current_user: CompanyOrHMUser = Depends(get_current_company_or_hm),
     db: Session = Depends(get_db)
 ):
-    job = db.query(JobPosting).filter(JobPosting.id == job_id, JobPosting.hiring_manager_id == current_hm.id).first()
+    """
+    View applicants for a job. Accessible by both COMPANY and HIRING_MANAGER.
+    HM can only see applicants for their own postings.
+    Company can see applicants for any posting under their company.
+    Mirrors Spring's ApplicationApi.getApplicants with hasAnyRole.
+    """
+    if current_user.is_hiring_manager:
+        job = db.query(JobPosting).filter(
+            JobPosting.id == job_id,
+            JobPosting.hiring_manager_id == current_user.hm.id
+        ).first()
+    else:
+        job = db.query(JobPosting).filter(
+            JobPosting.id == job_id,
+            JobPosting.company_id == current_user.company.id
+        ).first()
+
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-        
+
     apps = db.query(JobApplication).filter(JobApplication.job_posting_id == job_id).all()
-    
+
     result = []
     for app in apps:
         candidate = app.candidate
         if not candidate:
             continue
-            
+
         result.append({
             "applicationId": app.id,
             "candidateId": candidate.id,
@@ -167,13 +201,25 @@ class StatusUpdate(BaseModel):
 def update_application_status(
     app_id: int,
     update_data: StatusUpdate,
-    current_hm: HiringManager = Depends(get_current_hiring_manager),
+    current_user: CompanyOrHMUser = Depends(get_current_company_or_hm),
     db: Session = Depends(get_db)
 ):
+    """
+    Update an application's status. Accessible by both COMPANY and HIRING_MANAGER.
+    Mirrors Spring's ApplicationApi.updateStatus with hasAnyRole.
+    """
     app = db.query(JobApplication).filter(JobApplication.id == app_id).first()
-    if not app or not app.job or app.job.hiring_manager_id != current_hm.id:
+    if not app or not app.job:
         raise HTTPException(status_code=404, detail="Application not found")
-        
+
+    # Ownership check — HM must own the posting, Company must own the company on the posting
+    if current_user.is_hiring_manager:
+        if app.job.hiring_manager_id != current_user.hm.id:
+            raise HTTPException(status_code=404, detail="Application not found")
+    else:
+        if app.job.company_id != current_user.company.id:
+            raise HTTPException(status_code=404, detail="Application not found")
+
     app.status = update_data.status
     db.commit()
     db.refresh(app)

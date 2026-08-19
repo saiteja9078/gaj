@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from core.database import get_db
-from api.deps import get_current_company, get_current_hiring_manager
+from api.deps import get_current_company, get_current_hiring_manager, get_current_candidate
 from schemas.company import CompanyResponse, DepartmentCreate, HiringManagerCreate, CompanyReviewCreate
 from models.company import Company, Department, HiringManager, CompanyReview
 from models.candidate import Candidate
@@ -34,7 +34,7 @@ def add_hiring_manager(
     dept = db.query(Department).filter(Department.id == hm_req.department_id, Department.company_id == current_company.id).first()
     if not dept:
         raise HTTPException(status_code=404, detail="Department not found in this company")
-        
+
     hm = HiringManager(
         firstName=hm_req.firstName,
         lastName=hm_req.lastName,
@@ -50,17 +50,23 @@ def add_hiring_manager(
 @router.post("/reviews")
 def add_review(
     review_req: CompanyReviewCreate,
+    current_candidate: Candidate = Depends(get_current_candidate),
     db: Session = Depends(get_db)
 ):
+    """
+    Add a company review. Requires CANDIDATE role.
+    Mirrors Spring's CompanyReviewApi.addReview — uses the authenticated candidate's ID.
+    """
     review = CompanyReview(
         text=review_req.text,
         stars=review_req.stars,
         company_id=review_req.company_id,
-        candidate_id=1 # Assuming mocked candidate
+        candidate_id=current_candidate.id  # use real authenticated candidate, not hardcoded 1
     )
     db.add(review)
     db.commit()
     return {"message": "Review added successfully"}
+
 
 @router.get("")
 def list_companies(db: Session = Depends(get_db)):
@@ -119,7 +125,7 @@ def get_hiring_managers(
             "firstName": hm.firstName,
             "lastName": hm.lastName,
             "email": hm.email,
-            "hiringDepartment": {"id": hm.department.id, "name": hm.department.name} if hm.department else None
+            "hiringDepartment": {"id": hm.hiringDepartment.id, "name": hm.hiringDepartment.name} if hm.hiringDepartment else None
         }
         for hm in hms
     ]
@@ -154,3 +160,23 @@ def get_company_reviews(
         }
         for r in reviews
     ]
+
+@router.delete("/reviews/{review_id}", status_code=204)
+def delete_review(
+    review_id: int,
+    current_candidate: Candidate = Depends(get_current_candidate),
+    db: Session = Depends(get_db)
+):
+    """
+    Delete a company review. Requires CANDIDATE role.
+    Only the candidate who wrote the review can delete it.
+    Mirrors Spring's CompanyReviewApi.deleteReview.
+    """
+    review = db.query(CompanyReview).filter(
+        CompanyReview.id == review_id,
+        CompanyReview.candidate_id == current_candidate.id  # ownership check
+    ).first()
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found or you are not the author")
+    db.delete(review)
+    db.commit()

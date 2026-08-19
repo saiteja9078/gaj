@@ -1,25 +1,41 @@
-from sqlalchemy import Column, Integer, String, Sequence
-from sqlalchemy.orm import relationship
+from typing import TYPE_CHECKING
+from sqlalchemy import String, Sequence, BigInteger, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from core.database import Base
+
+if TYPE_CHECKING:
+    from .job import JobPosting
+    from .company import Company
 
 class Skill(Base):
     __tablename__ = "skills"
+    __table_args__ = (
+        UniqueConstraint("name", name="unique_skill_contraint"),
+    )
     
-    id = Column(Integer, Sequence("skill_seq", start=50, increment=50), primary_key=True, index=True)
-    name = Column(String, unique=True, nullable=False)
+    id: Mapped[int] = mapped_column(BigInteger, Sequence("skill_seq", start=1, increment=50), primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
 
 class RoleEntity(Base):
     __tablename__ = "roles"
+    __table_args__ = (
+        UniqueConstraint("name", name="unique_role"),
+    )
     
-    id = Column(Integer, Sequence("role_seq", start=50, increment=50), primary_key=True, index=True)
-    name = Column(String, unique=True, nullable=False)
+    id: Mapped[int] = mapped_column(BigInteger, Sequence("role_seq", start=1, increment=50), primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
     
-    job_postings = relationship("JobPosting", back_populates="role")
+    job_postings: Mapped[list["JobPosting"]] = relationship(back_populates="role")
 
 class Industry(Base):
     __tablename__ = "industries"
+    __table_args__ = (
+        UniqueConstraint("name", name="unique_dpt_constrain"),
+    )
     
-    id = Column(Integer, Sequence("industry_seq", start=50, increment=50), primary_key=True, index=True)
-    name = Column(String, unique=True, nullable=False)
+    id: Mapped[int] = mapped_column(BigInteger, Sequence("industry_seq", start=1, increment=50), primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
     
-    companies = relationship("Company", back_populates="industry")
+    companies: Mapped[list["Company"]] = relationship(back_populates="industry")
+
+

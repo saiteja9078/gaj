@@ -192,7 +192,13 @@ def upload_resume(
     )
     db.add(resume)
     db.commit()
-    return {"message": "Resume uploaded successfully"}
+    db.refresh(resume)
+    return {
+        "id": resume.id,
+        "fileName": resume.actualName,
+        "uploadedAt": resume.uploadedAt.isoformat() if resume.uploadedAt else None,
+        "extractedText": resume.content
+    }
 
 @router.delete("/resumes/{resume_id}")
 def delete_resume(
