@@ -108,7 +108,7 @@ function JobsPage() {
       postedAfter = d.toISOString();
     }
     setLoading(true);
-    listJobsPage(query, { location: locationStr || undefined, skillIds, roleId, companyIds, workMode: remoteOnly ? "REMOTE" : undefined, types: types.length > 0 ? types : undefined, postedAfter, salaryGe, salaryLe }, page, 20)
+    listJobsPage(query, { location: locationStr || undefined, skillIds, roleId, companyIds, workMode: remoteOnly ? "REMOTE" : undefined, types: types.length > 0 ? types : undefined, postedAfter, salaryGe, salaryLe }, page, 10)
       .then((res) => {
         const newJobs = res.content;
         setJobs(newJobs);
@@ -155,6 +155,53 @@ function JobsPage() {
           />
         </div>
       </div>
+
+      {/* Active filter chips */}
+      {(roleId || skillIds.length > 0 || companyIds.length > 0 || remoteOnly || datePostedDays || types.length > 0 || salaryGe || salaryLe) && (
+        <div className="border-b border-border bg-background">
+          <div className="mx-auto flex max-w-[1400px] flex-wrap items-center gap-2 px-4 py-2.5 sm:px-6">
+            <span className="text-xs font-medium text-muted-foreground">Filters:</span>
+            {roleId && (
+              <Chip
+                label={catalog.roles.find(r => r.id === roleId)?.name ?? `Role #${roleId}`}
+                onRemove={() => { setRoleId(undefined); setPage(0); }}
+              />
+            )}
+            {skillIds.map(sid => (
+              <Chip
+                key={sid}
+                label={catalog.skills.find(s => s.id === sid)?.name ?? `Skill #${sid}`}
+                onRemove={() => { setSkillIds(ids => ids.filter(id => id !== sid)); setPage(0); }}
+              />
+            ))}
+            {companyIds.map(cid => (
+              <Chip
+                key={cid}
+                label={catalog.companies.find(c => c.backendId === cid)?.name ?? `Company #${cid}`}
+                onRemove={() => { setCompanyIds(ids => ids.filter(id => id !== cid)); setPage(0); }}
+              />
+            ))}
+            {remoteOnly && <Chip label="Remote only" onRemove={() => { setRemoteOnly(false); setPage(0); }} />}
+            {datePostedDays && <Chip label={`Last ${datePostedDays} day${datePostedDays > 1 ? 's' : ''}`} onRemove={() => { setDatePostedDays(null); setPage(0); }} />}
+            {types.map(t => (
+              <Chip key={t} label={t.replaceAll('_', ' ')} onRemove={() => { setTypes(ts => ts.filter(x => x !== t)); setPage(0); }} />
+            ))}
+            {(salaryGe || salaryLe) && (
+              <Chip
+                label={`Salary: ${salaryGe ? `₹${salaryGe.toLocaleString('en-IN')}` : ''}${salaryGe && salaryLe ? ' – ' : ''}${salaryLe ? `₹${salaryLe.toLocaleString('en-IN')}` : ''}`}
+                onRemove={() => { setSalaryGe(undefined); setSalaryLe(undefined); setPage(0); }}
+              />
+            )}
+            <button
+              type="button"
+              onClick={() => { setRoleId(undefined); setSkillIds([]); setCompanyIds([]); setRemoteOnly(false); setDatePostedDays(null); setTypes([]); setSalaryGe(undefined); setSalaryLe(undefined); setPage(0); }}
+              className="ml-1 text-xs text-muted-foreground underline hover:text-foreground"
+            >
+              Clear all
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Mobile filter toggle button */}
       <div className="sticky top-16 z-30 flex items-center gap-3 border-b border-border bg-background px-4 py-2 sm:px-6 lg:hidden">
@@ -427,5 +474,21 @@ function FilterGroup({ title, children }: { title: string; children: React.React
         {children}
       </div>
     </details>
+  );
+}
+
+function Chip({ label, onRemove }: { label: string; onRemove: () => void }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-foreground">
+      {label}
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label={`Remove ${label} filter`}
+        className="ml-0.5 flex size-4 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+      >
+        ×
+      </button>
+    </span>
   );
 }

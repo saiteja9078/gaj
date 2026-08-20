@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, computed_field
 from typing import Optional, List
 from datetime import datetime
 from models.enums import PostingStatus, JobType, WorkMode, ApplicationStatus, Proficiency
@@ -53,13 +53,21 @@ class JobPostingBase(BaseModel):
     country: Optional[str] = None
     state: Optional[str] = None
     city: Optional[str] = None
-    company_id: int
+    company_id: Optional[int] = None
     workMode: WorkMode
     minimumExperienceInMonths: Optional[int] = None
     expiresAt: Optional[datetime] = None
 
 class JobPostingCreate(JobPostingBase):
     pass
+
+class SkillRequirementFlat(BaseModel):
+    id: int
+    name: str
+    required: bool = False
+
+    class Config:
+        from_attributes = True
 
 class JobPostingResponse(JobPostingBase):
     id: int
@@ -68,7 +76,21 @@ class JobPostingResponse(JobPostingBase):
     role: Optional[RoleResponse] = None
     company: Optional[CompanyResponse] = None
     skillRequirements: List[JobSkillRequirementResponse] = []
-    
+
+    @computed_field
+    @property
+    def companyName(self) -> Optional[str]:
+        return self.company.name if self.company else None
+
+    @computed_field
+    @property
+    def jobSkillRequirements(self) -> List[dict]:
+        result = []
+        for sr in self.skillRequirements:
+            if sr.skill:
+                result.append({"id": sr.skill_id, "name": sr.skill.name, "required": sr.required})
+        return result
+
     class Config:
         from_attributes = True
 
@@ -90,3 +112,7 @@ class JobRoundResponse(JobRoundBase):
 
     class Config:
         from_attributes = True
+
+# Request models
+class StatusUpdate(BaseModel):
+    status: str

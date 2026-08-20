@@ -1,6 +1,6 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { getApplicationDetails, type DetailedApplication } from "@/lib/api";
+import { getApplicationDetails, slugify, type DetailedApplication } from "@/lib/api";
 import { ChevronLeft, Building2, MapPin, Briefcase, IndianRupee, Clock, Users } from "lucide-react";
 import { toast } from "sonner";
 import MDEditor from "@uiw/react-md-editor";
@@ -155,13 +155,17 @@ function ApplicationDetailRoute() {
               <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
                 <div className="flex items-center gap-1.5">
                   <Building2 className="size-4" />
-                  <Link to={`/companies/${app.companyId}`} className="hover:text-primary hover:underline">
+                  <Link
+                    to="/companies/$slug"
+                    params={{ slug: slugify(app.companyName) }}
+                    className="hover:text-primary hover:underline"
+                  >
                     {app.companyName}
                   </Link>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <MapPin className="size-4" />
-                  {app.jobLocation ? `${app.jobLocation.city}, ${app.jobLocation.country}` : "Remote"}
+                  {(app.jobLocation as any)?.city ? `${(app.jobLocation as any).city}, ${(app.jobLocation as any).country}` : "Remote"}
                 </div>
               </div>
 

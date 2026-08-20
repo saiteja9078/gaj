@@ -34,6 +34,10 @@ class HiringManagerResponse(HiringManagerBase):
     class Config:
         from_attributes = True
 
+class HiringManagerUpdate(BaseModel):
+    firstName: Optional[str] = None
+    lastName: Optional[str] = None
+
 # Company Review Schemas
 class CompanyReviewBase(BaseModel):
     text: str
@@ -70,3 +74,11 @@ class CompanyResponse(CompanyBase):
 
     class Config:
         from_attributes = True
+
+# Request models
+class CompanyUpdate(BaseModel):
+    name: Optional[str] = None
+    companyProfileUrl: Optional[str] = None
+    country: Optional[str] = None
+    state: Optional[str] = None
+    city: Optional[str] = None

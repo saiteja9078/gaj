@@ -70,8 +70,7 @@ export function AuthForm({ mode }: { mode: "signin" | "signup" }) {
                   name: companyName.trim() || "New Company", 
                   email, 
                   password,
-                  industryId: industryId && industryId !== "new" ? Number(industryId) : undefined,
-                  industryName: industryId === "new" ? industryName : undefined
+                  industry_id: industryId && industryId !== "new" ? Number(industryId) : undefined,
                 }
               : {
                   firstName: firstName.trim() || "User",

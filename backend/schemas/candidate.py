@@ -73,3 +73,24 @@ class CandidateResponse(CandidateBase):
 
     class Config:
         from_attributes = True
+
+# Request models
+class AddExistingSkill(BaseModel):
+    id: int
+    proficiency: str
+
+class CreateNewSkill(BaseModel):
+    name: str
+    proficiency: str
+
+class SaveSkillsRequest(BaseModel):
+    addExistingSkills: List[AddExistingSkill]
+    createNewSkills: List[CreateNewSkill]
+
+class ExpCreateReq(BaseModel):
+    role_id: int
+    company_id: Optional[int] = None
+    organizationName: str
+    description: str = ""
+    fromDate: datetime
+    toDate: Optional[datetime] = None

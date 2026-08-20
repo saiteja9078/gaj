@@ -145,7 +145,7 @@ function ApplicantsPage() {
                 {selected.email} · {selected.location?.city ? `${selected.location.city}, ${selected.location.country || ""}` : selected.location?.country || "India"}
               </p>
               <p className="mt-2 text-sm text-muted-foreground">
-                Applied {selected.appliedAt}
+                Applied {selected.appliedAt ? new Date(selected.appliedAt).toLocaleDateString() : ""}
               </p>
 
               {selected.description && (

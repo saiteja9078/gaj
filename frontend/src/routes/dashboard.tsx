@@ -133,7 +133,7 @@ function Dashboard() {
                     <span className="rounded bg-secondary px-2 py-0.5 text-xs font-semibold capitalize text-secondary-foreground">
                       {app.status.toLowerCase()}
                     </span>
-                    <span className="text-xs text-muted-foreground ml-3">{app.appliedAt}</span>
+                    <span className="text-xs text-muted-foreground ml-3">{app.appliedAt ? new Date(app.appliedAt).toLocaleDateString() : ""}</span>
                   </div>
                   {app.status === "REJECTED" && (
                     <AlertDialog>

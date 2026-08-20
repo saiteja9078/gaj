@@ -1,6 +1,7 @@
 import os
 import sys
 from datetime import datetime, timedelta, timezone
+import random
 
 # Add backend directory to sys.path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -34,7 +35,20 @@ def seed():
             "Healthcare & HealthTech",
             "Cloud Infrastructure & Security",
             "Media & Entertainment",
-            "EdTech & Learning"
+            "EdTech & Learning",
+            "Cybersecurity",
+            "Logistics & Supply Chain",
+            "ClimateTech & CleanTech",
+            "Gaming & Interactive Media",
+            "Travel & Hospitality",
+            "Telecommunications",
+            "Automotive & Mobility",
+            "Biotechnology & Life Sciences",
+            "Manufacturing & Industrial IoT",
+            "LegalTech",
+            "InsurTech",
+            "PropTech",
+            "HRTech"
         ]
         
         industry_map = {}
@@ -62,7 +76,18 @@ def seed():
             "Site Reliability Engineer (SRE)",
             "Mobile Developer (iOS/Android)",
             "Security Engineer",
-            "QA Automation Engineer"
+            "QA Automation Engineer",
+            "Data Engineer",
+            "Platform Engineer",
+            "Cloud Security Engineer",
+            "AI Research Engineer",
+            "MLOps Engineer",
+            "Solutions Architect",
+            "Business Intelligence Analyst",
+            "Product Designer",
+            "Technical Program Manager",
+            "Embedded Systems Engineer",
+            "Android Developer"
         ]
         
         role_map = {}
@@ -174,6 +199,42 @@ def seed():
                 "industry": "Software & Technology"
             }
         ]
+
+        # Additional synthetic companies for broader test coverage.
+        extra_companies = [
+            ("NovaCart", "E-Commerce & Quick Commerce", "India", "Maharashtra", "Mumbai"),
+            ("CloudNest", "Cloud Infrastructure & Security", "India", "Tamil Nadu", "Chennai"),
+            ("MedAxis", "Healthcare & HealthTech", "India", "Telangana", "Hyderabad"),
+            ("EduOrbit", "EdTech & Learning", "India", "Delhi", "New Delhi"),
+            ("ShieldForge", "Cybersecurity", "United States", "Texas", "Austin"),
+            ("GreenGrid", "ClimateTech & CleanTech", "Germany", "Berlin", "Berlin"),
+            ("GameVerse", "Gaming & Interactive Media", "Canada", "Ontario", "Toronto"),
+            ("TripLoom", "Travel & Hospitality", "Singapore", "Central Region", "Singapore"),
+            ("AutoPulse", "Automotive & Mobility", "Germany", "Bavaria", "Munich"),
+            ("BioNova", "Biotechnology & Life Sciences", "United Kingdom", "England", "Cambridge"),
+            ("FactoryIQ", "Manufacturing & Industrial IoT", "Japan", "Tokyo", "Tokyo"),
+            ("InsureStack", "InsurTech", "India", "Maharashtra", "Pune"),
+            ("HomeSphere", "PropTech", "United Arab Emirates", "Dubai", "Dubai"),
+            ("TalentLoop", "HRTech", "India", "Haryana", "Gurugram"),
+            ("TelcoWave", "Telecommunications", "India", "Maharashtra", "Pune"),
+            ("LegalPilot", "LegalTech", "United States", "New York", "New York"),
+            ("DataHarbor", "Software & Technology", "India", "Karnataka", "Bengaluru"),
+            ("QuantumLeaf", "Artificial Intelligence & ML", "United States", "California", "San Jose"),
+            ("StreamForge", "Media & Entertainment", "United States", "Washington", "Seattle"),
+            ("PayFlux", "Financial Services & FinTech", "India", "Telangana", "Hyderabad"),
+            ("SecureOrbit", "Cloud Infrastructure & Security", "Ireland", "Leinster", "Dublin"),
+            ("RetailPulse", "E-Commerce & Quick Commerce", "India", "West Bengal", "Kolkata"),
+        ]
+        for idx, (name, industry, country, state, city) in enumerate(extra_companies, start=1):
+            companies_data.append({
+                "name": name,
+                "email": f"careers@{name.lower()}.example.com",
+                "companyProfileUrl": f"https://{name.lower()}.example.com",
+                "country": country,
+                "state": state,
+                "city": city,
+                "industry": industry,
+            })
 
         company_map = {}
         for c_info in companies_data:
@@ -291,6 +352,48 @@ def seed():
                 db.add(existing_hm)
                 db.flush()
             hm_map[hm_info["company"]] = existing_hm
+        # One hiring manager per additional company.
+        first_names = ["Maya", "Daniel", "Aisha", "Rohan", "Meera", "Liam", "Nina", "Arjun",
+                       "Sofia", "Vikram", "Chloe", "Ethan", "Ishita", "Noah", "Kavya"]
+        last_names = ["Kapoor", "Williams", "Patel", "Kim", "Fernandez", "Mehta", "Brown",
+                      "Singh", "Garcia", "Wilson", "Shah", "Martin", "Thomas", "Lee", "Das"]
+        dept_names = [
+            "Engineering", "Platform Engineering", "Data & AI", "Product Engineering",
+            "Infrastructure", "Security Engineering", "Customer Technology", "Applied ML"
+        ]
+        existing_hm_companies = set(hm_map.keys())
+        for idx, c_info in enumerate(extra_companies):
+            if c_info[0] in existing_hm_companies:
+                continue
+            company_name = c_info[0]
+            comp = company_map[company_name]
+            dept_name = dept_names[idx % len(dept_names)]
+            dept = db.query(Department).filter(
+                Department.name == dept_name,
+                Department.company_id == comp.id
+            ).first()
+            if not dept:
+                dept = Department(name=dept_name, company_id=comp.id)
+                db.add(dept)
+                db.flush()
+
+            first = first_names[idx % len(first_names)]
+            last = last_names[idx % len(last_names)]
+            email = f"{first.lower()}.{last.lower()}@{company_name.lower()}.example.com"
+            existing_hm = db.query(HiringManager).filter(HiringManager.email == email).first()
+            if not existing_hm:
+                existing_hm = HiringManager(
+                    firstName=first,
+                    lastName=last,
+                    email=email,
+                    gender=[Gender.FEMALE, Gender.MALE][idx % 2],
+                    password=default_pwd,
+                    department_id=dept.id
+                )
+                db.add(existing_hm)
+                db.flush()
+            hm_map[company_name] = existing_hm
+
         print(f"✓ Seeded {len(hm_map)} Hiring Managers & Departments")
 
         # ----------------------------------------------------
@@ -528,6 +631,90 @@ def seed():
             }
         ]
 
+        # Generate additional job postings with varied roles, locations, seniority,
+        # compensation, work modes, and skill combinations.
+        rng = random.Random(20260820)
+        job_templates = [
+            ("Backend Platform Engineer", "Platform Engineer"),
+            ("Data Platform Engineer", "Data Engineer"),
+            ("AI/ML Engineer", "Machine Learning Engineer"),
+            ("Cloud Security Engineer", "Cloud Security Engineer"),
+            ("MLOps Engineer", "MLOps Engineer"),
+            ("Solutions Architect", "Solutions Architect"),
+            ("QA Automation Engineer", "QA Automation Engineer"),
+            ("Product Designer", "Product Designer"),
+            ("Technical Program Manager", "Technical Program Manager"),
+            ("Mobile Engineer", "Mobile Developer (iOS/Android)"),
+            ("Business Intelligence Analyst", "Business Intelligence Analyst"),
+            ("AI Research Engineer", "AI Research Engineer"),
+        ]
+        locations = [
+            ("India", "Karnataka", "Bengaluru"),
+            ("India", "Telangana", "Hyderabad"),
+            ("India", "Maharashtra", "Mumbai"),
+            ("India", "Tamil Nadu", "Chennai"),
+            ("India", "Haryana", "Gurugram"),
+            ("India", "West Bengal", "Kolkata"),
+            ("United States", "California", "San Francisco"),
+            ("United States", "Washington", "Seattle"),
+            ("United Kingdom", "England", "London"),
+            ("Germany", "Berlin", "Berlin"),
+            ("Singapore", "Central Region", "Singapore"),
+            ("Canada", "Ontario", "Toronto"),
+        ]
+        skill_groups = [
+            ["Python", "FastAPI", "PostgreSQL", "Docker", "Redis", "REST APIs"],
+            ["TypeScript", "React", "Next.js", "GraphQL", "Git", "REST APIs"],
+            ["Python", "PyTorch", "LLMs & GenAI", "Scikit-learn", "MLflow", "RAG"],
+            ["AWS", "Kubernetes", "Terraform", "Docker", "CI/CD", "Prometheus"],
+            ["Java", "Spring Boot", "Kafka", "PostgreSQL", "Redis", "Microservices"],
+            ["Go", "Kubernetes", "gRPC", "Linux", "Distributed Systems", "Docker"],
+            ["SQL", "Python", "Pandas", "Apache Spark", "Airflow", "Tableau"],
+            ["Figma", "Agile/Scrum", "Product Analytics", "HTML/CSS", "JavaScript"],
+            ["Selenium", "Playwright", "Pytest", "Java", "Git", "CI/CD"],
+            ["Swift", "Kotlin", "REST APIs", "Git", "PostgreSQL", "Docker"],
+        ]
+        existing_job_titles = {j["title"] for j in job_postings_data}
+        extra_company_names = [x[0] for x in extra_companies]
+        for i in range(1, 37):
+            base_title, role_name = job_templates[(i - 1) % len(job_templates)]
+            company_name = extra_company_names[(i - 1) % len(extra_company_names)]
+            city_loc = locations[(i - 1) % len(locations)]
+            title = f"{base_title} - {company_name} #{i}"
+            if title in existing_job_titles:
+                continue
+            lower = 700000 + (i % 6) * 250000
+            upper = lower + 900000 + (i % 5) * 350000
+            exp = [0, 6, 12, 18, 24, 36, 48, 60][i % 8]
+            mode = [WorkMode.REMOTE, WorkMode.HYBRID, WorkMode.ONSITE][i % 3]
+            job_postings_data.append({
+                "title": title,
+                "company": company_name,
+                "role": role_name,
+                "description": (
+                    f"{company_name} is hiring a {base_title} to build reliable products, "
+                    f"improve engineering velocity, and collaborate across product and platform teams. "
+                    f"The role includes production ownership, observability, testing, and measurable delivery."
+                ),
+                "salaryLower": lower,
+                "salaryHigher": upper,
+                "status": [PostingStatus.OPEN, PostingStatus.OPEN, PostingStatus.OPEN][i % 3],
+                "type": JobType.INTERN if i % 13 == 0 else JobType.FULL_TIME,
+                "workMode": mode,
+                "country": city_loc[0],
+                "state": city_loc[1],
+                "city": city_loc[2],
+                "minimumExperienceInMonths": exp,
+                "workingHoursPerDay": 8 if i % 5 else 7,
+                "skills": [
+                    (skill, [Proficiency.BEGINNER, Proficiency.INTERMEDIATE,
+                             Proficiency.ADVANCED, Proficiency.EXPERT][(i + j) % 4],
+                     j < 3)
+                    for j, skill in enumerate(skill_groups[(i - 1) % len(skill_groups)])
+                    if skill in skill_map
+                ]
+            })
+
         job_posting_map = {}
         for jp_info in job_postings_data:
             comp = company_map[jp_info["company"]]
@@ -671,6 +858,94 @@ def seed():
             }
         ]
 
+        # Generate a diverse candidate pool for matching/search/filter testing.
+        candidate_first = [
+            "Aarav", "Ishaan", "Vivaan", "Aditya", "Kabir", "Arjun", "Riya", "Diya",
+            "Meera", "Anika", "Sara", "Nisha", "Maya", "Daniel", "Lucas", "Emma",
+            "Olivia", "Noah", "Ethan", "Sophia", "Zoe", "Mia", "Leo", "Amelia",
+            "Yuki", "Kenji", "Hana", "Mateo", "Ava", "Elijah"
+        ]
+        candidate_last = [
+            "Patel", "Shah", "Reddy", "Nair", "Gupta", "Kapoor", "Iyer", "Rao",
+            "Mehta", "Joshi", "Brown", "Wilson", "Garcia", "Martin", "Kim",
+            "Tanaka", "Singh", "Das", "Thomas", "Khan", "Verma", "Bose"
+        ]
+        candidate_locations = [
+            ("India", "Karnataka", "Bengaluru"),
+            ("India", "Telangana", "Hyderabad"),
+            ("India", "Maharashtra", "Pune"),
+            ("India", "Delhi", "New Delhi"),
+            ("India", "Tamil Nadu", "Chennai"),
+            ("India", "Kerala", "Kochi"),
+            ("India", "Haryana", "Gurugram"),
+            ("United States", "California", "San Jose"),
+            ("United States", "Texas", "Austin"),
+            ("United Kingdom", "England", "London"),
+            ("Germany", "Berlin", "Berlin"),
+            ("Singapore", "Central Region", "Singapore"),
+            ("Canada", "Ontario", "Toronto"),
+            ("Japan", "Tokyo", "Tokyo"),
+        ]
+        candidate_skill_sets = [
+            ["Python", "FastAPI", "PostgreSQL", "Docker", "Redis", "React"],
+            ["Java", "Spring Boot", "PostgreSQL", "Kafka", "Microservices", "Docker"],
+            ["Python", "PyTorch", "LLMs & GenAI", "Scikit-learn", "RAG", "FastAPI"],
+            ["TypeScript", "React", "Next.js", "GraphQL", "Git", "REST APIs"],
+            ["AWS", "Kubernetes", "Terraform", "Docker", "CI/CD", "Linux"],
+            ["Go", "Kubernetes", "gRPC", "PostgreSQL", "Redis", "Distributed Systems"],
+            ["SQL", "Python", "Pandas", "Apache Spark", "Airflow", "Tableau"],
+            ["Figma", "JavaScript", "HTML/CSS", "Agile/Scrum", "React"],
+            ["Swift", "Kotlin", "REST APIs", "Git", "Docker"],
+            ["Selenium", "Playwright", "Pytest", "Java", "Git", "CI/CD"],
+        ]
+        candidate_roles = [
+            "Full Stack Software Engineer", "Senior Backend Engineer", "Frontend Engineer",
+            "DevOps & Cloud Engineer", "Machine Learning Engineer", "Data Scientist",
+            "Site Reliability Engineer (SRE)", "Mobile Developer (iOS/Android)",
+            "Security Engineer", "QA Automation Engineer"
+        ]
+        existing_candidate_emails = {c["email"] for c in candidates_data}
+        for i in range(1, 41):
+            first = candidate_first[(i - 1) % len(candidate_first)]
+            last = candidate_last[(i * 3 - 1) % len(candidate_last)]
+            email = f"{first.lower()}.{last.lower()}.{i}@example.com"
+            if email in existing_candidate_emails:
+                continue
+            loc = candidate_locations[(i - 1) % len(candidate_locations)]
+            skills = candidate_skill_sets[(i - 1) % len(candidate_skill_sets)]
+            years = i % 8
+            candidates_data.append({
+                "email": email,
+                "firstName": first,
+                "lastName": last,
+                "gender": [Gender.MALE, Gender.FEMALE][i % 2],
+                "country": loc[0],
+                "state": loc[1],
+                "city": loc[2],
+                "description": (
+                    f"{years}+ years of experience in {candidate_roles[(i - 1) % len(candidate_roles)]}. "
+                    f"Experienced in production systems, collaborative development, testing, and cloud-native delivery."
+                ),
+                "skills": [
+                    (skill, [Proficiency.INTERMEDIATE, Proficiency.ADVANCED,
+                             Proficiency.EXPERT][(i + j) % 3])
+                    for j, skill in enumerate(skills) if skill in skill_map
+                ],
+                "experiences": [
+                    {
+                        "role": candidate_roles[(i - 1) % len(candidate_roles)],
+                        "org": ["Northstar Labs", "Vertex Systems", "BlueOrbit Tech",
+                                "Apex Digital", "OrionWorks"][i % 5],
+                        "desc": (
+                            "Delivered production features, improved reliability, "
+                            "and collaborated with engineering and product stakeholders."
+                        ),
+                        "fromDate": datetime(2020 + (i % 5), 1 + (i % 10), 1),
+                        "toDate": None
+                    }
+                ]
+            })
+
         candidate_map = {}
         for c_data in candidates_data:
             cand = db.query(Candidate).filter(Candidate.email == c_data["email"]).first()
@@ -770,6 +1045,31 @@ def seed():
             }
         ]
 
+        # Create additional applications to exercise application lifecycle queries.
+        application_statuses = [
+            ApplicationStatus.APPLIED,
+            ApplicationStatus.SCREENING,
+            ApplicationStatus.INTERVIEW,
+            ApplicationStatus.OFFER,
+        ]
+        all_candidate_emails = [c["email"] for c in candidates_data]
+        all_job_titles = list(job_posting_map.keys())
+        extra_app_count = 0
+        for i, email in enumerate(all_candidate_emails):
+            if email == "saitejabrawl@gmail.com":
+                continue
+            for offset in range(2):
+                job_title = all_job_titles[(i * 3 + offset) % len(all_job_titles)]
+                applications_data.append({
+                    "candidate_email": email,
+                    "job_title": job_title,
+                    "status": application_statuses[(i + offset) % len(application_statuses)],
+                    "coverLetter": (
+                        f"I am interested in the {job_title} opportunity and believe my "
+                        f"experience aligns well with the role's technical and product requirements."
+                    )
+                })
+
         app_count = 0
         for app_info in applications_data:
             cand = candidate_map.get(app_info["candidate_email"])
@@ -827,6 +1127,26 @@ def seed():
                 "text": "Exceptional respect for technology simplicity and minimal bloat. True engineering pride in keeping systems lean and fast."
             }
         ]
+
+        # Add varied ratings/reviews for analytics and company-profile testing.
+        review_templates = [
+            "Strong engineering ownership and challenging production problems.",
+            "Supportive teammates with a good balance of autonomy and mentorship.",
+            "Fast-paced environment with meaningful customer-facing work.",
+            "Good technical depth, though priorities can change quickly.",
+            "Excellent learning opportunities and exposure to large-scale systems.",
+            "Collaborative culture with strong emphasis on reliability and quality.",
+        ]
+        review_candidates = [c["email"] for c in candidates_data if c["email"] in candidate_map]
+        review_companies = [c[0] for c in extra_companies]
+        for i, email in enumerate(review_candidates[:30]):
+            company_name = review_companies[i % len(review_companies)]
+            reviews_data.append({
+                "company": company_name,
+                "candidate_email": email,
+                "stars": 1 + ((i * 7) % 5),
+                "text": review_templates[i % len(review_templates)]
+            })
 
         review_count = 0
         for rev_info in reviews_data:

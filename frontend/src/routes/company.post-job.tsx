@@ -76,19 +76,20 @@ function PostJobPage() {
     setSubmitting(true);
     try {
       await createJobPosting({
-        roleId: roleId === "custom" ? null : Number(roleId),
-        createRoleName: roleId === "custom" ? customRole.trim() : null,
+        // BUG 5 FIX: Use snake_case field names matching the backend JobPostingCreate schema.
+        // Previously sent camelCase "roleId" which backend rejected with 422.
+        role_id: roleId === "custom" || !roleId ? 1 : Number(roleId),
         title,
         description: description || title,
         salaryLower: Number(form.get("minimum") || 0),
         salaryHigher: Number(form.get("maximum") || 0),
         minimumExperienceInMonths: Number(form.get("expMonths") || 0),
         status: "OPEN",
-        postedAt: new Date().toISOString(),
         expiresAt: null,
-        existingSkills: selectedSkillIds.map((id) => ({ id, proficiency: "INTERMEDIATE", required: true })),
-        createSkills: customSkills.map(name => ({ name, proficiency: "INTERMEDIATE", required: true })),
-        location: { country: "India", state: locationStr, city: locationStr },
+        // Flat location fields — backend JobPostingBase has country/state/city at top level
+        country: "India",
+        state: locationStr,
+        city: locationStr,
         workMode: locationStr.toLowerCase().includes("remote") ? "REMOTE" : "ONSITE",
         workingHoursPerDay: 8,
         type:

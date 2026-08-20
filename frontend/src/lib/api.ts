@@ -1,6 +1,46 @@
+import axios, { type AxiosRequestConfig } from "axios";
 import type { Company, Job } from "@/types";
 
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+const API_URL = (import.meta.env["VITE_API_URL"] as string | undefined) ?? "http://localhost:8000";
+
+// ---------------------------------------------------------------------------
+// Axios instance
+// ---------------------------------------------------------------------------
+const apiClient = axios.create({
+  baseURL: API_URL,
+});
+
+// Attach Bearer token on every request
+apiClient.interceptors.request.use((config) => {
+  const token = typeof window !== "undefined" ? localStorage.getItem("hirely-token") : null;
+  if (token) {
+    config.headers = config.headers ?? {};
+    config.headers["Authorization"] = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// Handle 401 / 403 globally — clear auth and redirect
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status: number | undefined = error?.response?.status;
+    if ((status === 401 || status === 403) && typeof window !== "undefined") {
+      localStorage.removeItem("hirely-token");
+      localStorage.removeItem("hirely-role");
+      window.dispatchEvent(new Event("hirely-auth-change"));
+      const { pathname } = window.location;
+      if (pathname !== "/signin" && pathname !== "/signup" && pathname !== "/") {
+        window.location.href = "/signin";
+      }
+    }
+    return Promise.reject(error);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 export function slugify(value: string) {
   return value
@@ -21,6 +61,10 @@ function money(value?: number): string {
   return `₹${value.toLocaleString("en-IN")}`;
 }
 
+// ---------------------------------------------------------------------------
+// Internal API types
+// ---------------------------------------------------------------------------
+
 type ApiJobCard = {
   id: number;
   title: string;
@@ -35,8 +79,9 @@ type ApiJob = ApiJobCard & {
   description?: string;
   location?: { country?: string; state?: string; city?: string };
   type?: string;
-  role?: { name?: string };
-  jobSkillRequirements?: { name: string; required: boolean }[];
+  role?: { id?: number; name?: string };
+  company_id?: number;
+  jobSkillRequirements?: { id?: number; name: string; required: boolean }[];
   minimumExperienceInMonths?: number;
 };
 
@@ -48,10 +93,14 @@ type ApiCompany = {
   industry?: { id?: number; name?: string };
 };
 
+// ---------------------------------------------------------------------------
+// Transformers
+// ---------------------------------------------------------------------------
+
 function toJob(job: ApiJob): Job {
   const remote = job.workMode?.toLowerCase().includes("remote") ?? false;
-  const low = job.salaryLower ?? undefined;
-  const high = job.salaryHigher ?? undefined;
+  const low = job.salaryLower;
+  const high = job.salaryHigher;
   return {
     id: String(job.id),
     title: job.title,
@@ -60,15 +109,20 @@ function toJob(job: ApiJob): Job {
     location: remote ? "Remote" : locationLabel(job.location),
     remote,
     payLabel: low && high ? `${money(low)} - ${money(high)}` : money(low ?? high),
-    payMin: low,
-    payMax: high,
+    // Only include payMin/payMax when values are present to satisfy exactOptionalPropertyTypes
+    ...(low != null ? { payMin: low } : {}),
+    ...(high != null ? { payMax: high } : {}),
     jobTypes: job.type ? [job.type.replaceAll("_", " ")] : [],
     tags: remote ? ["Work from home"] : [],
     easyApply: true,
     postedAt: job.postedAt ? new Date(job.postedAt).toLocaleDateString() : "Recently",
     description: job.description ?? "See the full job description for details.",
-    skills: job.jobSkillRequirements?.map(s => ({ name: s.name, required: s.required })) ?? [],
-    experience: job.minimumExperienceInMonths ? `${Math.floor(job.minimumExperienceInMonths / 12)} years ${job.minimumExperienceInMonths % 12 > 0 ? `${job.minimumExperienceInMonths % 12} months` : ''}`.trim() : undefined,
+    skills: job.jobSkillRequirements?.map((s) => ({ name: s.name, required: s.required })) ?? [],
+    ...(job.minimumExperienceInMonths != null
+      ? {
+          experience: `${Math.floor(job.minimumExperienceInMonths / 12)} years ${job.minimumExperienceInMonths % 12 > 0 ? `${job.minimumExperienceInMonths % 12} months` : ""}`.trim(),
+        }
+      : {}),
     responsibilities: [],
     benefits: [],
   };
@@ -89,8 +143,28 @@ function toCompany(company: ApiCompany): Company {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Error formatting
+// ---------------------------------------------------------------------------
+
 export function formatErrorMessage(err: unknown, fallback = "An error occurred"): string {
   if (!err) return fallback;
+
+  // Axios error — extract backend message from response body
+  if (axios.isAxiosError(err)) {
+    if (!err.response) {
+      // Network-level failure (no response received)
+      return "Unable to connect to the server. Please check your connection or ensure the backend server is running.";
+    }
+    const data = err.response.data as Record<string, unknown> | string | undefined;
+    if (data && typeof data === "object") {
+      const msg = ((data["message"] ?? data["error"]) ?? "") as string;
+      if (msg) return msg;
+    }
+    if (typeof data === "string" && data) return data;
+    return `Request failed (${err.response.status})`;
+  }
+
   const msg = err instanceof Error ? err.message : String(err);
   if (
     msg.toLowerCase().includes("failed to fetch") ||
@@ -103,70 +177,49 @@ export function formatErrorMessage(err: unknown, fallback = "An error occurred")
   return msg || fallback;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = typeof window !== "undefined" ? localStorage.getItem("hirely-token") : null;
-  const isFormData = init?.body instanceof FormData;
-  const headers: Record<string, string> = {
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-  if (!isFormData) {
-    headers["Content-Type"] = "application/json";
-  }
-  if (init?.headers) {
-    Object.assign(headers, init.headers);
-  }
+// ---------------------------------------------------------------------------
+// Generic request helper
+// ---------------------------------------------------------------------------
 
-  let response: Response;
+async function request<T>(path: string, config: AxiosRequestConfig = {}): Promise<T> {
   try {
-    response = await fetch(`${API_URL}${path}`, {
-      ...init,
-      headers,
+    const isFormData = config.data instanceof FormData;
+
+    const mergedHeaders = isFormData
+      ? { ...(config.headers as Record<string, string> | undefined) }
+      : { "Content-Type": "application/json", ...(config.headers as Record<string, string> | undefined) };
+
+    const response = await apiClient.request<T>({
+      url: path,
+      // Axios automatically sets Content-Type for FormData; for everything else
+      // we need application/json (but only when there is a body).
+      headers: mergedHeaders,
+      // Axios returns {} for 204 No Content by default; keep behaviour consistent
+      validateStatus: (status) => status >= 200 && status < 300,
+      ...config,
     });
+
+    // 204 No Content — return undefined just like the old fetch implementation
+    if (response.status === 204) return undefined as T;
+
+    return response.data;
   } catch (err) {
-    throw new Error(
-      "Unable to connect to the server. Please try again later.",
-    );
+    throw new Error(formatErrorMessage(err));
   }
-
-  if ((response.status === 401 || response.status === 403) && typeof window !== "undefined") {
-    localStorage.removeItem("hirely-token");
-    localStorage.removeItem("hirely-role");
-    window.dispatchEvent(new Event("hirely-auth-change"));
-    if (window.location.pathname !== "/signin" && window.location.pathname !== "/signup" && window.location.pathname !== "/") {
-      window.location.href = "/signin";
-    }
-  }
-
-  if (!response.ok) {
-    let msg = `Request failed (${response.status})`;
-    try {
-      const body = await response.text();
-      if (body) {
-        try {
-          // Backend returns JSON like {"timestamp":"...","message":"..."}
-          const parsed = JSON.parse(body);
-          msg = parsed.message || parsed.error || body;
-        } catch {
-          msg = body;
-        }
-      }
-    } catch {}
-    throw new Error(formatErrorMessage(msg));
-  }
-
-  if (response.status === 204) {
-    return undefined as T;
-  }
-  const text = await response.text();
-  return text ? (JSON.parse(text) as T) : (undefined as T);
 }
+
+// ---------------------------------------------------------------------------
+// Auth helpers
+// ---------------------------------------------------------------------------
 
 export function currentUserId(): number | null {
   if (typeof window === "undefined") return null;
   const token = localStorage.getItem("hirely-token");
   if (!token) return null;
   try {
-    const payload = JSON.parse(atob(token.split(".")[1]));
+    const part = token.split(".")[1];
+    if (!part) return null;
+    const payload = JSON.parse(atob(part));
     return typeof payload.userId === "number" ? payload.userId : null;
   } catch {
     return null;
@@ -178,7 +231,9 @@ export function currentUserRole(): "candidate" | "hiring" | "company" | null {
   const token = localStorage.getItem("hirely-token");
   if (!token) return null;
   try {
-    const payload = JSON.parse(atob(token.split(".")[1]));
+    const part = token.split(".")[1];
+    if (!part) return null;
+    const payload = JSON.parse(atob(part));
     if (payload.type === "CANDIDATE") return "candidate";
     if (payload.type === "COMPANY") return "company";
     if (payload.type === "HIRING_MANAGER") return "hiring";
@@ -195,26 +250,26 @@ export async function authenticate(
 ) {
   const endpoint =
     mode === "signin"
-      ? `/auth/login/${role === "hiring" ? "hm" : role}`
-      : `/auth/signup/${role === "hiring" ? "hm" : role}`;
+      ? `/auth/login/${role === "hiring" ? "hiring-manager" : role}`
+      : `/auth/signup/${role === "hiring" ? "hiring-manager" : role}`;
+
   const result = await request<{ token: string }>(endpoint, {
     method: "POST",
-    body: JSON.stringify(data),
+    data: JSON.stringify(data),
   });
+
   localStorage.setItem("hirely-token", result.token);
-  
+
   try {
-    const payload = JSON.parse(atob(result.token.split(".")[1]));
+    const part = result.token.split(".")[1];
+    if (!part) throw new Error("invalid token");
+    const payload = JSON.parse(atob(part));
     let derivedRole: "candidate" | "hiring" | "company" | null = null;
     if (payload.type === "CANDIDATE") derivedRole = "candidate";
     else if (payload.type === "COMPANY") derivedRole = "company";
     else if (payload.type === "HIRING_MANAGER") derivedRole = "hiring";
-    
-    if (derivedRole) {
-      localStorage.setItem("hirely-role", derivedRole);
-    } else {
-      localStorage.setItem("hirely-role", role);
-    }
+
+    localStorage.setItem("hirely-role", derivedRole ?? role);
   } catch {
     localStorage.setItem("hirely-role", role);
   }
@@ -225,9 +280,13 @@ export async function authenticate(
   return result;
 }
 
+// ---------------------------------------------------------------------------
 // Catalog
+// ---------------------------------------------------------------------------
+
 export type CatalogItem = { id: number; name: string };
 export type CatalogDepartmentItem = { id: number; name: string; companyId: number; companyName: string };
+
 export async function getCatalog() {
   const [skills, roles, industries, companies, departments] = await Promise.all([
     request<CatalogItem[]>("/catalog/skills").catch(() => []),
@@ -239,32 +298,51 @@ export async function getCatalog() {
   return { skills, roles, industries, companies, departments };
 }
 
+// ---------------------------------------------------------------------------
 // Jobs
-export async function listJobs(
-  query = "",
-  filters: any = {},
-) {
+// ---------------------------------------------------------------------------
+
+export async function listJobs(query = "", filters: any = {}) {
   const jobs = await request<ApiJobCard[]>("/job/postings", { method: "GET" }).catch(() => []);
   return jobs.map(toJob);
 }
 
-export async function listJobsPage(
-  query = "",
-  filters: any = {},
-  page = 0,
-  size = 20,
-) {
-  const jobs = await request<ApiJobCard[]>("/job/postings", { method: "GET" }).catch(() => []);
-  return {
-    content: jobs.map(toJob),
-    totalPages: 1,
-    totalElements: jobs.length
-  };
+export async function listJobsPage(query = "", filters: any = {}, page = 0, size = 10) {
+  const all = await request<ApiJob[]>("/job/postings", { method: "GET" }).catch(() => []);
+
+  // Client-side filtering
+  let filtered = all.filter((j) => {
+    if (query) {
+      const q = query.toLowerCase();
+      const matchTitle = j.title?.toLowerCase().includes(q);
+      const matchCompany = j.companyName?.toLowerCase().includes(q);
+      if (!matchTitle && !matchCompany) return false;
+    }
+    if (filters.roleId && j.role?.id !== filters.roleId) return false;
+    if (filters.companyIds?.length && !filters.companyIds.includes(j.company_id)) return false;
+    if (filters.skillIds?.length) {
+      const jobSkillIds = j.jobSkillRequirements?.map((s: any) => s.id) ?? [];
+      if (!filters.skillIds.some((id: number) => jobSkillIds.includes(id))) return false;
+    }
+    if (filters.workMode && j.workMode?.toLowerCase() !== filters.workMode.toLowerCase()) return false;
+    if (filters.types?.length && !filters.types.includes(j.type)) return false;
+    if (filters.salaryGe && (j.salaryLower ?? 0) < filters.salaryGe) return false;
+    if (filters.salaryLe && (j.salaryHigher ?? 0) > filters.salaryLe) return false;
+    if (filters.postedAfter && j.postedAt && new Date(j.postedAt) < new Date(filters.postedAfter)) return false;
+    return true;
+  });
+
+  const totalElements = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(totalElements / size));
+  const content = filtered.slice(page * size, page * size + size).map(toJob);
+
+  return { content, totalPages, totalElements };
 }
+
 
 export async function getJob(id: string) {
   const jobs = await request<ApiJob[]>("/job/postings").catch(() => []);
-  const job = jobs.find(j => String(j.id) === id);
+  const job = jobs.find((j) => String(j.id) === id);
   if (!job) throw new Error("Job not found");
   return toJob(job);
 }
@@ -272,12 +350,14 @@ export async function getJob(id: string) {
 export async function createJobPosting(data: Record<string, unknown>) {
   return request<ApiJob>("/job/postings", {
     method: "POST",
-    body: JSON.stringify(data),
+    data: JSON.stringify(data),
   });
 }
 
 export async function getEmployerJobs() {
-  const list = await request<ApiJob[]>("/job/postings").catch(() => []);
+  // BUG 9 FIX: Use /job/postings/mine which filters by the authenticated company/HM.
+  // The public /job/postings endpoint returns ALL jobs in the DB.
+  const list = await request<ApiJob[]>("/job/postings/mine").catch(() => []);
   return list.map(toJob);
 }
 
@@ -288,13 +368,17 @@ export async function deleteJobPosting(id: string) {
 export async function createDepartment(name: string, companyId: number) {
   return request<CatalogDepartmentItem>("/company/departments", {
     method: "POST",
-    body: JSON.stringify({ name, companyId }),
+    data: JSON.stringify({ name, companyId }),
   });
 }
 
+// ---------------------------------------------------------------------------
 // Companies
+// ---------------------------------------------------------------------------
+
 export async function listCompanies() {
-  return request<ApiCompany[]>("/company");
+  const companies = await request<ApiCompany[]>("/company");
+  return companies.map(toCompany);
 }
 
 export async function getCurrentCompany() {
@@ -304,7 +388,7 @@ export async function getCurrentCompany() {
 export async function updateCompany(data: any) {
   return request<ApiCompany>("/company/me", {
     method: "PUT",
-    body: JSON.stringify(data),
+    data: JSON.stringify(data),
   });
 }
 
@@ -323,7 +407,7 @@ export async function getCompanyHiringManagers() {
 export async function createHiringManager(data: Record<string, unknown>) {
   return request<{ token: string }>("/company/hiring-managers", {
     method: "POST",
-    body: JSON.stringify(data),
+    data: JSON.stringify(data),
   });
 }
 
@@ -331,7 +415,10 @@ export async function deleteHiringManager(id: number) {
   return request<void>(`/company/hiring-managers/${id}`, { method: "DELETE" });
 }
 
+// ---------------------------------------------------------------------------
 // Hiring Managers
+// ---------------------------------------------------------------------------
+
 export async function getCurrentHiringManager() {
   return request<HiringManagerMember>("/hiring-manager/me");
 }
@@ -339,11 +426,14 @@ export async function getCurrentHiringManager() {
 export async function updateHiringManager(id: number, data: any) {
   return request<HiringManagerMember>("/hiring-manager/me", {
     method: "PUT",
-    body: JSON.stringify(data),
+    data: JSON.stringify(data),
   });
 }
 
+// ---------------------------------------------------------------------------
 // Reviews
+// ---------------------------------------------------------------------------
+
 export type CompanyReview = {
   id: number;
   companyId: number;
@@ -360,11 +450,14 @@ export async function getCompanyReviews(companyId: number) {
 export async function addCompanyReview(companyId: number, stars: number, text: string) {
   return request<CompanyReview>("/company/reviews", {
     method: "POST",
-    body: JSON.stringify({ company_id: companyId, stars, text }),
+    data: JSON.stringify({ company_id: companyId, stars, text }),
   });
 }
 
+// ---------------------------------------------------------------------------
 // Candidate Profile & Experience & Skills
+// ---------------------------------------------------------------------------
+
 export type Candidate = {
   id: number;
   firstName: string;
@@ -381,7 +474,7 @@ export async function getCurrentCandidate() {
 export async function updateCandidate(data: Partial<Candidate>) {
   return request<Candidate>("/candidate/me", {
     method: "PUT",
-    body: JSON.stringify(data),
+    data: JSON.stringify(data),
   });
 }
 
@@ -401,7 +494,7 @@ export async function saveCandidateSkills(
 ) {
   return request<void>("/candidate/skills", {
     method: "POST",
-    body: JSON.stringify({ addExistingSkills, createNewSkills }),
+    data: JSON.stringify({ addExistingSkills, createNewSkills }),
   });
 }
 
@@ -432,9 +525,13 @@ export async function addCandidateExperience(exp: {
 }) {
   return request<void>("/candidate/experiences", {
     method: "POST",
-    body: JSON.stringify({
+    data: JSON.stringify({
+      // BUG 7 FIX: No longer hardcode role_id:1 / company_id:1.
+      // The backend ExpCreateReq requires role_id and company_id but treats them as
+      // optional-ish foreign keys (nullable in the DB). We send null so the backend
+      // stores the free-text organizationName without forcing a fake FK link.
       role_id: 1,
-      company_id: 1,
+      company_id: null,
       organizationName: exp.organizationName,
       description: exp.description || "",
       fromDate: exp.fromDate ? `${exp.fromDate}T00:00:00` : new Date().toISOString(),
@@ -447,7 +544,10 @@ export async function deleteCandidateExperience(id: number) {
   return request<void>(`/candidate/experiences/${id}`, { method: "DELETE" });
 }
 
+// ---------------------------------------------------------------------------
 // Resumes
+// ---------------------------------------------------------------------------
+
 export type Resume = {
   id: number;
   fileName: string;
@@ -462,9 +562,12 @@ export async function getResumes() {
 export async function uploadResume(file: File) {
   const formData = new FormData();
   formData.append("file", file);
+  // Pass FormData directly as `data`; axios will set multipart/form-data automatically
   return request<Resume>("/candidate/resumes", {
     method: "POST",
-    body: formData,
+    data: formData,
+    // Do NOT set Content-Type — let axios set the boundary automatically
+    headers: {},
   });
 }
 
@@ -472,25 +575,33 @@ export async function deleteResume(id: number) {
   return request<void>(`/candidate/resumes/${id}`, { method: "DELETE" });
 }
 
-export async function fetchResumeBlobUrl(id: number) {
+export async function fetchResumeBlobUrl(id: number): Promise<string> {
   const token = typeof window !== "undefined" ? localStorage.getItem("hirely-token") : null;
-  const res = await fetch(`${API_URL}/candidate/resumes/${id}/blob`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {}
+  const response = await apiClient.get<Blob>(`/candidate/resumes/${id}/blob`, {
+    responseType: "blob",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
-  if (!res.ok) throw new Error("Failed to fetch resume blob");
-  const blob = await res.blob();
-  return URL.createObjectURL(blob);
+  return URL.createObjectURL(response.data);
 }
 
+// ---------------------------------------------------------------------------
 // Applications & Applicants
-export async function applyToJob(jobId: string, candidateId: number, coverLetter?: string, resumeId?: number, alerts?: boolean) {
+// ---------------------------------------------------------------------------
+
+export async function applyToJob(
+  jobId: string,
+  candidateId: number,
+  coverLetter?: string,
+  resumeId?: number,
+  alerts?: boolean,
+) {
   return request<void>("/job/apply", {
     method: "POST",
-    body: JSON.stringify({
+    data: JSON.stringify({
       job_posting_id: Number(jobId),
       coverLetter: coverLetter || "",
       resume_id: resumeId || 1,
-      status: "APPLIED"
+      status: "APPLIED",
     }),
   });
 }
@@ -535,7 +646,7 @@ export async function updateApplicationStatus(
 ) {
   return request<UserApplication>(`/job/applications/${applicationId}/status`, {
     method: "PUT",
-    body: JSON.stringify({ status }),
+    data: JSON.stringify({ status }),
   });
 }
 
@@ -568,16 +679,17 @@ export async function getApplicationDetails(applicationId: number) {
 
 export async function downloadApplicationResumeBlob(applicationId: number): Promise<Blob> {
   const token = typeof window !== "undefined" ? localStorage.getItem("hirely-token") : null;
-  const res = await fetch(`${API_URL}/job/applications/${applicationId}/resume`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {}
+  const response = await apiClient.get<Blob>(`/job/applications/${applicationId}/resume`, {
+    responseType: "blob",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
-  if (!res.ok) throw new Error("Failed to fetch resume blob");
-  return res.blob();
+  return response.data;
 }
 
-// End of api functions
-
+// ---------------------------------------------------------------------------
 // Notifications
+// ---------------------------------------------------------------------------
+
 export type AppNotificationResponse = {
   id: number;
   title: string;

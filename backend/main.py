@@ -6,11 +6,17 @@ from models.candidate import Candidate
 import models
 from api.routers import auth, candidate, company, job, catalog, hiring_manager
 from api.deps import get_current_candidate
-
+from contextlib import asynccontextmanager
 # Optional: Create all tables (In production, use alembic)
-Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title=settings.PROJECT_NAME)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    Base.metadata.create_all(bind=engine)
+    yield
+    # print("dropping tables")
+    # Base.metadata.drop_all(bind=engine)
+app = FastAPI(title=settings.PROJECT_NAME,lifespan=lifespan)
 
 # CORS — origins are read from CORS_ALLOWED_ORIGINS env var (comma-separated)
 allowed_origins = [o.strip() for o in settings.CORS_ALLOWED_ORIGINS.split(",")]

@@ -1,5 +1,6 @@
 import { createFileRoute, Link, Navigate, redirect } from "@tanstack/react-router";
 import { useEffect, useState, type FormEvent } from "react";
+import { toast } from "sonner";
 import { useRole } from "@/lib/role";
 import {
   AlertDialog,
@@ -94,8 +95,12 @@ function CompanyDashboard() {
       }
 
       await createHiringManager({
-        ...newManager,
-        departmentId: deptId
+        firstName: newManager.firstName,
+        lastName: newManager.lastName,
+        email: newManager.email,
+        password: newManager.password,
+        gender: newManager.gender,
+        department_id: deptId,
       });
       // Refresh team
       const newTeam = await getCompanyHiringManagers().catch(() => team);
